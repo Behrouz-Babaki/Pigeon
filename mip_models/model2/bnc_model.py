@@ -66,7 +66,7 @@ def mincut_callback(model, where):
         start = timer()
         
         relaxation_objval = model.cbGet(GRB.Callback.MIPNODE_OBJBND)
-        if model._relobj is not None:
+        if model._relobj is not None and model._relobj != 0:
             imp = (model._relobj - relaxation_objval) / model._relobj
             if imp < 0.005: 
                 model._impcounter += 1
@@ -113,6 +113,10 @@ class Bnc_Model(object):
         self.timeout = timeout
         
         model = Model('graph_clustering')
+        model.params.OutputFlag = self.verbosity
+        model.params.UpdateMode = 1
+        model.Params.PreCrush = 1
+        model.Params.LazyConstraints = 1        
         
         mvars = []
         for i in range(k):
@@ -121,7 +125,6 @@ class Bnc_Model(object):
                 v = model.addVar(lb=0.0, ub=1.0, vtype=GRB.BINARY)
                 cvars.append(v)
             mvars.append(cvars)
-        model.update()
             
         ineq_sense = GRB.GREATER_EQUAL if overlap else GRB.EQUAL
         # constraint: each vertex in exactly/at least one cluster
@@ -139,29 +142,28 @@ class Bnc_Model(object):
         
         obj_expr = LinExpr()
         wsum = sum(w for (_, _, w) in cl_constraints)
-        coef = gamma/wsum
-        # indicators for violation of cl constraints
-        for (u, v, w) in cl_constraints:
-            for i in range(k):
+        if wsum > 0:
+            coef = gamma/wsum
+            # indicators for violation of cl constraints
+            for (u, v, w) in cl_constraints:
                 y = model.addVar(lb=0.0, ub=1.0, vtype=GRB.CONTINUOUS)
-                model.update()
-                model.addConstr(y >= mvars[i][u] + mvars[i][v] - 1)
+                for i in range(k):
+                    model.addConstr(y >= mvars[i][u] + mvars[i][v] - 1)
                 obj_expr.add(y, coef * w)
                 
         # indicators for violation of ml constraints
         wsum = sum(w for (_, _, w) in ml_constraints)                
-        coef = (1-gamma)/wsum
-        for (u, v, w) in ml_constraints:
-            for i in range(k):
+        if wsum > 0:
+            coef = (1-gamma)/wsum
+            for (u, v, w) in ml_constraints:
                 y = model.addVar(lb=0.0, ub=1.0, vtype=GRB.CONTINUOUS)
-                model.addConstr(y >= mvars[i][u] - mvars[i][v])
-                model.addConstr(y >= mvars[i][v] - mvars[i][u])
+                for i in range(k):
+                    model.addConstr(y >= mvars[i][u] - mvars[i][v])
+                    model.addConstr(y >= mvars[i][v] - mvars[i][u])
                 obj_expr.add(y, coef * w)                
         
         model.setObjective(obj_expr, GRB.MINIMIZE)
-        model.params.OutputFlag = self.verbosity
-        model.Params.PreCrush = 1
-        model.Params.LazyConstraints = 1
+
         
         model._cutfinder = Cut_Finder(n_vertices, edges)
         model._vars = mvars

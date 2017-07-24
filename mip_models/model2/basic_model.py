@@ -60,6 +60,7 @@ class Basic_Model(object):
         self.create_graph()
         
         self.model = Model('graph_clustering')
+        self.model.params.OutputFlag = self.verbosity
         self.model.params.updatemode = 1
         
         self.mvars = []
@@ -97,27 +98,27 @@ class Basic_Model(object):
         
         obj_expr = LinExpr()
         wsum = sum(w for (_, _, w) in cl_constraints)
-        coef = gamma/wsum        
-        # indicators for violation of cl constraints
-        for (u, v, w) in cl_constraints:
-            for i in range(k):
+        if wsum > 0:
+            coef = gamma/wsum        
+            # indicators for violation of cl constraints
+            for (u, v, w) in cl_constraints:
                 y = self.model.addVar(lb=0.0, ub=1.0, vtype=GRB.CONTINUOUS)
-                self.model.addConstr(y >= self.mvars[i][u] + self.mvars[i][v] - 1)
+                for i in range(k):
+                    self.model.addConstr(y >= self.mvars[i][u] + self.mvars[i][v] - 1)
                 obj_expr.add(y, coef * w)
 
         # indicators for violation of ml constraints
         wsum = sum(w for (_, _, w) in ml_constraints)                
-        coef = (1-gamma)/wsum
-        for (u, v, w) in ml_constraints:
-            for i in range(k):
+        if wsum > 0:
+            coef = (1-gamma)/wsum
+            for (u, v, w) in ml_constraints:
                 y = self.model.addVar(lb=0.0, ub=1.0, vtype=GRB.CONTINUOUS)
-                self.model.addConstr(y >= self.mvars[i][u] - self.mvars[i][v])
-                self.model.addConstr(y >= self.mvars[i][v] - self.mvars[i][u])
+                for i in range(k):
+                    self.model.addConstr(y >= self.mvars[i][u] - self.mvars[i][v])
+                    self.model.addConstr(y >= self.mvars[i][v] - self.mvars[i][u])
                 obj_expr.add(y, coef * w)
         
         self.model.setObjective(obj_expr, GRB.MINIMIZE)
-        self.model.update()
-        self.model.params.OutputFlag = self.verbosity
                
     def check_graph(self, n_vertices, edges):
         vertices = set([i for (i, _) in edges])
